@@ -1,53 +1,89 @@
 <html><head>
-<TITLE>Julia sets animation DE</TITLE>
+<meta http-equiv="content-type" content="text/html; charset=ISO-8859-1">
+<title>WebGL:Mandelbrot to Julia fractal morphing</title>
 
 <script id="shader-vs" type="x-shader/x-vertex"> 
 attribute vec3 vPos;
 
-void main(void) {
+void main(void) 
+{
    gl_Position = vec4(vPos, 1.);
 }
 </script> 
  
 <script id="shader-fs" type="x-shader/x-fragment"> 
-precision mediump float;
-  uniform vec2 c;
-  uniform vec2 scale;
-void main(void) {
-   float R = (gl_FragCoord.x - scale.x) / scale.y;
-   float I = (gl_FragCoord.y - scale.x) / scale.y;
-   float R2 = R*R, I2 = I*I, Dr=.7, Di=.7, D;
-   int mm;
-   for(int m = 0; m < 255; m++){
-     D = (R*Dr - I*Di);  Di = (R*Di + I*Dr);  Dr = D;   mm = m;
-     I=(R+R)*I + c.y;  R=R2-I2 + c.x;  R2=R*R;  I2=I*I;
-     if( R2 + I2 > 100. ) break;
-   }
-   if (mm == 254) gl_FragColor = vec4(0., 0., 0., 1.);
-   else{
-    D = -30.*(log(log(R2+I2)*sqrt((R2+I2)/(Dr*Dr+Di*Di)))-float(mm)*.693);
-    D = mod( max(0., D), 90.)/30. ;
-    gl_FragColor = vec4( max(0., abs(D - 1.5) - .5),
-      max(0., 1. - abs(D - 1.)), max(0., 1. - abs(D - 2.)), 1.);
+
+precision highp float;
+
+uniform vec2 ComplexConstant;
+uniform float fViewportSize;
+uniform float blend;
+  
+void main(void) 
+{
+   const int nMaxIter = 128;
+   
+   float R = 3.5 * (gl_FragCoord.x - fViewportSize / 2.0)  / fViewportSize - 0.25;
+   float I = 3.5 * (gl_FragCoord.y - fViewportSize / 2.0)  / fViewportSize;
+   
+   
+   float Real0 = R;
+   float Imag0 = I;
+   
+   int LastIter;
+   float fRealConstant = blend * ComplexConstant.x + (1.0 - blend ) * Real0;
+   float fImagConstant = blend * ComplexConstant.y + (1.0 - blend ) * Imag0;
+   
+   float R2 = R*R; 
+   float I2 = I*I;
+   
+   for(int iter = 0; iter < nMaxIter; iter ++)
+   {
+		I=(R+R)*I + fImagConstant;
+		R=R2-I2 + fRealConstant;
+			
+		R2=R*R;
+		I2=I*I;
+		
+		LastIter = iter ;
+
+		if( R2+I2 > 4.0 ) 
+			break;
+	}
+	
+   if (LastIter  == nMaxIter-1) 
+		gl_FragColor = vec4(0., 0., 0., 1.);
+   else
+   {
+    float fValue = mod(float(LastIter),2.0);
+	float angle = 2.0 * 3.14 * float(LastIter) / float(nMaxIter) ;
+	gl_FragColor = vec4(1.0 - (0.5+0.5*cos(angle*2.0)),
+						1.0 - (0.5+0.5*cos(angle*3.0)),
+						1.0 - (0.5+0.5*cos(angle*5.0)), 
+						1.);
    }
 }
 </script> 
  
 <script type="text/javascript"> 
-function getShader ( gl, id ){
+function getShader ( gl, id )
+{
    var shaderScript = document.getElementById ( id );
    var str = "";
    var k = shaderScript.firstChild;
-   while ( k ){
+   while ( k )
+   {
      if ( k.nodeType == 3 ) str += k.textContent;
      k = k.nextSibling;
    }
    var shader;
    if ( shaderScript.type == "x-shader/x-fragment" )
            shader = gl.createShader ( gl.FRAGMENT_SHADER );
-   else if ( shaderScript.type == "x-shader/x-vertex" )
+   else 
+	if ( shaderScript.type == "x-shader/x-vertex" )
            shader = gl.createShader(gl.VERTEX_SHADER);
-   else return null;
+   else 
+	return null;
    gl.shaderSource(shader, str);
    gl.compileShader(shader);
    if (gl.getShaderParameter(shader, gl.COMPILE_STATUS) == 0)
@@ -55,27 +91,48 @@ function getShader ( gl, id ){
    return shader;
 }
 
-var gl, canvas;
-var cLoc, size, frames = 0, timer_fr, time,
-    n = 4, k, To = 30, T, Tp,  animation = true;
-var orb = [
-[-1.75, 0, .4],
-[-1.74534, 0, .1],
-[-1.745, .0032, .03],
-[-1.74528, .003328, .44],
-[-1.75001, 0, .03],
-[-1.75, 0, .4]];
+requestAnimFrame = function()
+{
+  return  window.webkitRequestAnimationFrame || window.mozRequestAnimationFrame || function(callback, element){ window.setTimeout(callback, 1000 / 60); }
+}();
 
-function webGLStart() {
+var gl, canvas;
+var cLoc, size, frames = 0, timer_fr, time, BlendLoc, Blend,ViewportSizeLoc;
+
+function Init() 
+{
+
+	/*
+	document.getElementById("Statut").textContent  = "Loading audio track........";
+ 
+	var audioElement = document.createElement("audio");
+    audioElement.setAttribute("src", "Quark.ogg");
+	audioElement.setAttribute("loop", "true");
+	audioElement.play();
+	*/
+	
+	
    canvas = document.getElementById("canvas");
    size = Math.min(window.innerWidth, window.innerHeight) - 35;
    canvas.width =  size;   canvas.height = size;
-   if (!window.WebGLRenderingContext){
+   if (!window.WebGLRenderingContext)
+   {
      alert("Your browser does not support WebGL. See http://get.webgl.org");
-     return;}
-   try { gl = canvas.getContext("experimental-webgl");
-   } catch(e) {}
-   if ( !gl ) {alert("Can't get WebGL"); return;}
+     return;
+	}
+  
+  try  { 
+	gl = canvas.getContext("experimental-webgl");
+	if (!gl) {
+		// if failed, try experimental one
+		gl = canvas.getContext("webgl");
+		if (!gl) {
+			alert("Your browser does not support WebGL");
+			return;
+		}
+	} 
+   }catch(e) {}
+   
    gl.viewport(0, 0, size, size);
 
    var prog  = gl.createProgram();
@@ -88,75 +145,77 @@ function webGLStart() {
    gl.enableVertexAttribArray( posAtrLoc );
    var posBuffer = gl.createBuffer();
    gl.bindBuffer(gl.ARRAY_BUFFER, posBuffer);
-   gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(
-     [-1,-1,0, 1,-1,0, -1,1,0, 1,1,0]), gl.STATIC_DRAW);
+   var vertices = new Float32Array([-1,-1, 0,   1,-1, 0,   1, 1, 0,  -1, 1, 0 ]);
+   gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.STATIC_DRAW);
    gl.vertexAttribPointer(posAtrLoc, 3, gl.FLOAT, false, 0, 0);
-   cLoc = gl.getUniformLocation(prog,"c");
-   gl.uniform2f( gl.getUniformLocation(prog,"scale"), size/2, size/.35 );
+   
+   cLoc = gl.getUniformLocation(prog,"ComplexConstant");
+   BlendLoc = gl.getUniformLocation(prog,"blend");
+   ViewportSizeLoc = gl.getUniformLocation(prog,"fViewportSize");
+   
+   gl.uniform1f( ViewportSizeLoc, size);
    time = new Date().getTime();
-   k = 0;  Tp = -1;
-   T = time/1000 + orb[k][2]*To;
-   timer_fr = setInterval(fr, 500);
+ 
+
+ 
+   timer_fr = setInterval(FramerateDisplay, 1000);
    anim();
 
-  canvas.resize = function (){
-    var size = Math.min(window.innerWidth, window.innerHeight) - 35;
-    canvas.width =  size;   canvas.height = size;
-    gl.uniform2f( gl.getUniformLocation(prog,"scale"), size/2, size/.35 );
+  canvas.resize = function ()
+  {
+    var size = Math.min(window.innerWidth, window.innerHeight);
+    canvas.width =  size;   
+	canvas.height = size;
+	gl.uniform1f( ViewportSizeLoc, size);
+	
     gl.viewport(0, 0, size, size);
-    draw();
+    drawScene();
   }
 }
 
-function anim(){
-   var tim = new Date().getTime()/1000;
-   var a = (T - tim)/(To*orb[k][2]);
-   gl.uniform2f( cLoc, orb[k][0]*a + orb[k+1][0]*(1-a),
-     orb[k][1]*a + orb[k+1][1]*(1-a) );
-   draw();
-   if (tim > T){
-     k++;  if (k > n) k = 0;
-     T += orb[k][2]*To;
-   }
-   frames++;
-   if ( animation ) requestAnimationFrame(anim);
+function anim()
+{
+	var tim = new Date().getTime()/1000;
+	var Real = Math.sin(tim/4.1);
+	var Imag = Math.cos(tim/4.1);
+
+	var Blend = Math.sin(tim/3.1) * Math.cos(tim/5.2);
+
+
+	gl.uniform2f( cLoc, Real,Imag);
+	gl.uniform1f( BlendLoc, Blend);
+
+	drawScene();
+	frames++;
+	requestAnimFrame(anim);
 }
-function draw() {
-   gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+function drawScene() 
+{
+   gl.drawArrays(gl.TRIANGLE_FAN, 0, 4);
    gl.flush ();
 }
-function setT(v) {
-  To = v.valueOf();
-}
-function run(v) {
-  if( animation ){
-    animation = false;
-    Tp = new Date().getTime()/1000;
-    document.getElementById('runBtn').value = "Run ";}
-  else{
-    animation = true;
-    if (Tp > 0){
-      T += new Date().getTime()/1000 - Tp;
-      Tp = -1;
-    }
-    anim();
-    document.getElementById('runBtn').value = "Stop";
-  }
-}
-function fr(){
+
+function FramerateDisplay()
+{
   var ti = new Date().getTime();
   var fps = Math.round(1000*frames/(ti - time));
-  document.getElementById("framerate").value = fps;
-  frames = 0;  time = ti;
+  document.getElementById("framerate").textContent  = fps;
+  frames = 0;  
+  time = ti;
 }
 </script> 
+
 </head>
-<body onload="webGLStart();" onresize="canvas.resize();">
-  <canvas id="canvas" width="400" height="400"></canvas>
-<br>T<input size="2" value="30" onchange="setT( this.value )">sec
-<input type="button" onclick="run()" value="Stop" size="1" id="runBtn">
-fps<input size="2" id="framerate">
+<body onload="Init();" 
+onresize="canvas.resize();"
+>
+<Font Color="#FFFFFF">
+<BODY BGCOLOR=Black>
+Real time fractal morphing - WebGL experiment : Code Marina Holzer.
+<br> 
+<span  id="Statut"> </span>	Framerate : <span  id="framerate"> </span> FPS
+<br> 
 
-
-
+ <canvas id="canvas" width="600" height="600"></canvas>
 </body></html>
